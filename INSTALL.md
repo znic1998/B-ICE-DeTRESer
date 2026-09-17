@@ -2,14 +2,6 @@
 
 The user guide (what the program does and how to use it) is `detreser/README.md`, also shown by the **Read Me** button inside the program. This file is only about getting it running.
 
-## Packaged app (nothing to install)
-
-Download the build for your computer, unzip it and double-click:
-
-* **macOS (Apple Silicon)** — `B-ICE DeTRESer.app`. The first time, macOS says the developer cannot be verified: right-click the app → *Open* → *Open*. Once per computer.
-* **Windows 10/11** — the `B-ICE DeTRESer` folder with `B-ICE DeTRESer.exe` inside; keep the folder together. If SmartScreen appears: *More info* → *Run anyway*.
-
-No Python, no admin rights; about 1 GB of disk.
 
 ## Running from source
 
