@@ -10,6 +10,7 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false   # a failure on one platform must not cancel the other build
       matrix:
         include:
           - os: windows-latest
@@ -24,7 +25,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: python -m pip install -r requirements-gui.txt pyinstaller
+      - run: python -m pip install -r requirements-gui.txt pyinstaller pytest
       - run: cd tres_suite && python -m pytest tests -q
       - run: pyinstaller DeTRESer.spec
       - run: ${{ matrix.zip }}
