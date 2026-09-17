@@ -1,0 +1,110 @@
+# Example configuration for tres_suite.
+# Run:   python -m tres_suite run examples/example_config.yaml
+# Paths are relative to this file.
+
+project:
+  # Names for the folder levels below each import folder; the last one is the replicate
+  # level by default (the workbook file itself).  Names carry no fixed scientific meaning.
+  level_names: [Composition, Condition, Replicate]
+  replicate_level: Replicate
+  workers: 1                       # >1 parses workbooks in parallel processes (identical results)
+  import_folders:
+    - "../../TEST DATA/DATA"   # i.e. TRES Program/TEST DATA/DATA when this package sits in TRES Program/tres_suite/
+  # Files can also be assigned explicitly:
+  # files:
+  #   - {path: "../some/file.xlsx", labels: {Composition: DOPC, Condition: "15", Replicate: "1"}}
+
+output:
+  directory: "../example_output"
+  image_formats: [png, svg]
+  dpi: 300
+  legacy_compatible: true
+  overwrite: true
+
+das:
+  amplitude_source: results        # results = full precision (default); summary = legacy 2-decimal EzTime values
+  gp_enabled: true                 # Laurdan GP is a probe-specific option
+  gp_blue_nm: 440
+  gp_red_nm: 490
+  custom_ratios:
+    ratio_510_430: "I(510) / I(430)"
+  bubble_method: quadratic_peak    # or lognormal_fit
+
+tdfs:
+  enabled: true
+  nu0_cm1: null                    # user-supplied peak nu0 in cm^-1; null -> apparent nu0 from the first usable spectrum
+  recon_dt_ns: 0.01
+  metric_tmin_ns: 0.1
+  tail_points: 5
+  intensity_floor: 0.01
+  clip_negative_c: true
+  compute_com: true
+
+wobble:
+  enabled: false                   # optional anisotropy add-on; requires volume + unit + temperature
+  # effective_volume: 161
+  # effective_volume_unit: A3      # A3 | nm3 | cm3 | m3  (legacy 161e-22 constant == 161 A3)
+  # temperature_K: 293            # fixed temperature for the whole run, or:
+  # temperature_level: Condition   # read T per group from this level's numeric folder name (17 -> 290.15 K; 17C / 300K keep their unit)
+  # temperature_level_unit: degC   # unit assumed for unit-less labels (degC | K)
+  # r0_source: literature          # literature (r0_literature, default 0.39) | fitted (workbook R0) | user (r0)
+  # r0_literature: 0.39
+  # phi_selection: mean            # mean | longest | shortest | component:<k>
+
+time_gated:
+  enabled: false                   # advanced: IRF-limited time-gated spectra / measured metrics from the Data sheet
+  # gates_ns: [[0, 0.5], [0.5, 2], [2, 7]]
+  # gate_mode: integral
+
+validation:
+  chi_sq_warning_threshold: 1.5    # EzTime "Chi sq." is a reduced chi-squared
+  replicate_variation_warning_percent: 20
+  anisotropy_correlation_time_tolerance_percent: 20
+  allow_nonuniform_grid: false
+
+plots:
+  - type: metric_vs_label
+    name: tmean_vs_condition
+    x: Condition
+    y: tmean_ns
+    series:
+      - {label: "DOPC", select: {Composition: "DOPC TEMPO Raw Data"}, color: "#d62728", marker: o}
+      - {label: "DPPC", select: {Composition: "DPPC TEMPO raw data"}, color: "#1f77b4", marker: s}
+  - type: metric_vs_metric
+    name: gp_vs_tmean
+    x: tmean_ns
+    y: gp
+    fit: true
+    series:
+      - {label: "DOPC", select: {Composition: "DOPC TEMPO Raw Data"}}
+      - {label: "DPPC", select: {Composition: "DPPC TEMPO raw data"}}
+  - type: das_spectra
+    name: dopc_0_das_relative_amplitude
+    representation: relative_amplitude
+    group: {Composition: "DOPC TEMPO Raw Data", Condition: "0"}
+  - type: das_spectra
+    name: dopc_0_das_npe
+    representation: normalized_pre_exponential
+    group: {Composition: "DOPC TEMPO Raw Data", Condition: "0"}
+  - type: bubble
+    name: dopc_0_bubble
+    group: {Composition: "DOPC TEMPO Raw Data", Condition: "0"}
+  - type: tdfs_spectra
+    name: dopc_0_tdfs_spectra
+    group: {Composition: "DOPC TEMPO Raw Data", Condition: "0"}
+  - type: tdfs_peak_vs_time
+    name: dopc_peak_vs_time
+    coordinate: peak
+    series:
+      - {label: "DOPC 0", select: {Composition: "DOPC TEMPO Raw Data", Condition: "0"}}
+      - {label: "DOPC 10", select: {Composition: "DOPC TEMPO Raw Data", Condition: "10"}}
+  - type: tdfs_relaxation
+    name: dopc_relaxation
+    coordinate: peak
+    series:
+      - {label: "DOPC 0", select: {Composition: "DOPC TEMPO Raw Data", Condition: "0"}}
+      - {label: "DOPC 10", select: {Composition: "DOPC TEMPO Raw Data", Condition: "10"}}
+  - type: stacked_area_bar
+    name: das_area_stack
+    series:
+      - {label: "DOPC", select: {Composition: "DOPC TEMPO Raw Data", Condition: ["0", "5", "10", "20"]}}

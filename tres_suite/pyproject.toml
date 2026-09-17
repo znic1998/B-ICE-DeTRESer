@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tres_suite"
+version = "0.1.0"
+description = "Backend for HORIBA DeltaFlex/EzTime TRES, DAS, TDFS and anisotropy analysis"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pandas>=1.5",
+    "openpyxl>=3.1",
+    "matplotlib>=3.7",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+tres-suite = "tres_suite.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["tres_suite*"]

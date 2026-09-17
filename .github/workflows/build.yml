@@ -1,0 +1,38 @@
+# Builds the packaged app on Windows and macOS whenever a version tag (v1.0, v1.1, ...) is pushed,
+# and attaches the zips to a GitHub Release. Manual runs ("Run workflow" button) build without a release.
+name: Build B-ICE DeTRESer
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: B-ICE-DeTRESer-windows
+            zip: powershell Compress-Archive -Path "dist/B-ICE DeTRESer" -DestinationPath "B-ICE-DeTRESer-windows.zip"
+          - os: macos-latest
+            artifact: B-ICE-DeTRESer-macos-apple-silicon
+            zip: cd dist && ditto -c -k --keepParent "B-ICE DeTRESer.app" "../B-ICE-DeTRESer-macos-apple-silicon.zip"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -r requirements-gui.txt pyinstaller
+      - run: cd tres_suite && python -m pytest tests -q
+      - run: pyinstaller DeTRESer.spec
+      - run: ${{ matrix.zip }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: "*.zip"
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          files: "*.zip"
