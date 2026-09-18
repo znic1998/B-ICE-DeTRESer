@@ -85,6 +85,4 @@ the exact plotted values + metadata), `legacy/` (tres1/tdfs big layouts),
 * `docs/methods.md` – equations, conventions, intentional changes from the legacy scripts
 * `docs/validation_rules.md` – diagnostics, thresholds, error-case behaviour
 * `docs/output_schema.md` – files, columns, units
-* `docs/legacy_inventory.md` – what the legacy scripts did and where each part went
 * `docs/validation_report.md` – comparison against the supplied reference outputs and coverage of all supplied files
-* `docs/open_questions.md` – decisions taken, remaining questions, unsupported inputs, deferred features
