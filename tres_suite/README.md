@@ -4,11 +4,7 @@ Backend for HORIBA DeltaFlex / EzTime time-resolved emission exports: TRES
 reconstruction, decay-associated spectra (DAS), peak-based time-dependent
 fluorescence shift (TDFS), Laurdan GP / custom intensity ratios, and
 time-resolved anisotropy (with an optional, explicitly enabled
-rotational-diffusion add-on).  It replaces the ad-hoc scripts `tdfs big.py`,
-`tres1.py` and `single laurdan.py` with importable, side-effect-free modules,
-a validated grouping/validation layer, deterministic exports and a small CLI.
-A desktop GUI is a future phase; every entry point a GUI needs is documented
-below.
+rotational-diffusion add-on).  
 
 ## Install
 
@@ -83,41 +79,6 @@ the exact plotted values + metadata), `legacy/` (tres1/tdfs big layouts),
 `inventory.csv`, `coverage_report.csv`, `diagnostics.csv/json`, `run_config.json`,
 `environment.json`, `run_manifest.json`.
 
-## Entry points for a future GUI
-
-```python
-from tres_suite.config import RunConfig, config_from_dict, load_config
-from tres_suite.pipeline import build_project, run_project        # import+validate+analyse -> RunResult (no writing)
-from tres_suite.plotting import render_plots, select_groups       # PlotConfig -> images + plotted data
-from tres_suite.export import write_run                           # RunResult -> files + manifest
-from tres_suite.workbook import load_workbook, detect_workbook_type
-from tres_suite.project import Project                            # add_file / import_folder / select / groups
-```
-
-Per-replicate calculations are pure functions of explicit data and settings:
-`das.compute_das`, `tdfs.compute_tdfs`, `anisotropy.compute_anisotropy`,
-`expressions.evaluate_expression`, `stats.linear_fit`.
-
-## GUI-phase additions (September 2026)
-
-The desktop GUI (**B-ICE DeTRESer**, package `detreser` next to this one) uses the entry
-points above plus these additions, all covered by `tests/test_core.py`:
-
-* `run_project(cfg, progress, file_progress=None, should_cancel=None)` — per-workbook
-  progress `(done, total, stage)` and cooperative cancellation (`RunCancelled`); with
-  `project.workers > 1` the per-replicate analysis also runs in parallel processes
-  (results are identical; the pool's copies are re-attached to the project's objects).
-* `wobble.temperature_level` (+ `temperature_level_unit`, default `degC`) — the
-  microviscosity add-on reads the temperature of every group from the numeric label of
-  that hierarchy level (`17` → 290.15 K, `17C`, `300K` keep their unit); groups without a
-  numeric label get `wobble_status = unavailable…`.  `temperature_K` stays for a fixed value.
-* `plotting.draw_plot(result, pc, ax)` draws any PlotConfig on an existing matplotlib axes
-  (returns the plotted data table and axis keys); `render_plots` is unchanged and uses it.
-  New plot types: `steady_state_spectrum` (pseudo steady-state spectrum, replicate mean ± SD),
-  `tdfs_fwhm_vs_time`; `tdfs_spectra` honours `extra.normalise = none|area`;
-  `metric_vs_label` with `extra.label_axis = "y"` puts the label on the y axis.
-* `advanced.deconvolution.group_spectra_from_result(group_result)` and `write_decisions(out_dir, decisions)`
-  so a GUI can review fits from memory and write the same `deconvolution_decisions.json`.
 
 ## Documentation
 
