@@ -52,7 +52,7 @@ If DeTRESer contributes to a publication, please cite this repository (a Zenodo 
 
 ## Contributions
 
-The analysis backend and all mathematical transformation of the spectra were written by Zachary Nicolella, and validated against the original reference implementation across 250 measurements. The application — GUI implementation, backend integration, in-window graphing, and build pipeline — was produced by Claude Fable 5.1 (Anthropic) and ChatGPT-6 Astra (OpenAI) against a specification written by Zachary Nicolella.
+The analysis backend and all mathematical transformation of the spectra were written by Zachary Nicolella, and validated against the original reference implementation across 250 measurements. The GUI was designed by Zachary Nicolella. Implementation — GUI code, backend integration, in-window graphing, and build pipeline — was produced by Claude Fable 5.1 (Anthropic) and ChatGPT-6 Astra (OpenAI) against that specification.
 
 ## License
 
