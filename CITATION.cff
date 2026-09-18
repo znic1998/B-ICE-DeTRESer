@@ -5,13 +5,13 @@ title: "B-ICE DeTRESer"
 authors:
   - family-names: "Nicolella"
     given-names: "Zachary"
-    affiliation: "B-ICE Laboratory, Osaka University"
+    affiliation: "Graduate School of Engineering Science, Osaka University"
   - family-names: "Morishita-Watanabe"
     given-names: "Nozomi"
-    affiliation: "B-ICE Laboratory, Osaka University"
+    affiliation: "Graduate School of Engineering Science, Osaka University"
   - family-names: "Umakoshi"
     given-names: "Hiroshi"
-    affiliation: "B-ICE Laboratory, Osaka University"
+    affiliation: "Graduate School of Engineering Science, Osaka University"
 abstract: >-
   B-ICE DeTRESer is a desktop application for analysing time-resolved
   emission spectrum data exported by HORIBA DeltaFlex and EzTime systems.
