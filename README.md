@@ -50,6 +50,10 @@ Open an issue with the group that failed, what you clicked, and `detreser.log` (
 
 If DeTRESer contributes to a publication, please cite this repository (a Zenodo DOI will be added with the first tagged release).
 
+## Contributions
+
+The analysis backend and all mathematical transformation of the spectra were written by Zachary Nicolella, and validated against the original reference implementation across 250 measurements. The application — GUI implementation, backend integration, in-window graphing, and build pipeline — was produced by Claude Fable 5.1 (Anthropic) and ChatGPT-6 Astra (OpenAI) against a specification written by Zachary Nicolella.
+
 ## License
 
 MIT — see [LICENSE](LICENSE). Fonts: IBM Plex, SIL Open Font License.
