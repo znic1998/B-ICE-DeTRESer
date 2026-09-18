@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+message: "If you use B-ICE DeTRESer in your research, please cite the software using these metadata."
+type: software
+title: "B-ICE DeTRESer"
+authors:
+  - family-names: "Nicolella"
+    given-names: "Zachary"
+    affiliation: "B-ICE Laboratory, Osaka University"
+  - family-names: "Morishita-Watanabe"
+    given-names: "Nozomi"
+    affiliation: "B-ICE Laboratory, Osaka University"
+  - family-names: "Umakoshi"
+    given-names: "Hiroshi"
+    affiliation: "B-ICE Laboratory, Osaka University"
+abstract: >-
+  B-ICE DeTRESer is a desktop application for analysing time-resolved
+  emission spectrum data exported by HORIBA DeltaFlex and EzTime systems.
+  It supports TRES, decay-associated spectra, time-dependent fluorescence
+  shifts, Laurdan generalized polarization and custom intensity ratios,
+  time-resolved anisotropy, and optional microviscosity calculations.
+keywords:
+  - "time-resolved fluorescence"
+  - "time-resolved emission spectra"
+  - "TRES"
+  - "decay-associated spectra"
+  - "fluorescence anisotropy"
+  - "Laurdan generalized polarization"
+  - "membrane biophysics"
+license: MIT
+repository-code: "https://github.com/znic1998/B-ICE-DeTRESer"
+url: "https://github.com/znic1998/B-ICE-DeTRESer"
