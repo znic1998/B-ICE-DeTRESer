@@ -22,6 +22,9 @@ class SeriesStyle:
     node: Node
     color: str
     marker: str
+    line_style: str = "-"
+    line_width: float = 1.5
+    label: str = ""
 
 
 @dataclass
@@ -36,6 +39,8 @@ class CompareSpec:
     value_title_x: str = ""
     value_title_y: str = ""
     error_bars: bool = True
+    show_legend: bool = True
+    connect_points: bool = True
     fit: bool = False
     kind: str = "tres"
     x_limits: Optional[list] = None
@@ -70,9 +75,10 @@ def build_plot_config(session: Session, spec: CompareSpec, name: str = "comparis
         raise ValueError("Choose Value for at least one axis.")
     series = []
     for i, st in enumerate(spec.series):
-        series.append(SeriesConfig(label=" › ".join(st.node.labels) if st.node.level > 1 else st.node.name,
-                                   select=session.select_for_node(st.node), color=st.color, marker=st.marker))
-    extra = {"kind": spec.kind}
+        series.append(SeriesConfig(label=st.label or (" › ".join(st.node.labels) if st.node.level > 1 else st.node.name),
+                                   select=session.select_for_node(st.node), color=st.color, marker=st.marker,
+                                   line_style=st.line_style, line_width=st.line_width))
+    extra = {"kind": spec.kind, "show_legend": spec.show_legend, "connect_points": spec.connect_points}
     if ptype == "metric_vs_metric":
         pc = PlotConfig(type=ptype, name=name, series=series, x=spec.metric_x, y=spec.metric_y,
                         x_label=spec.value_title_x or DEFAULT_AXIS_TITLES.get(spec.metric_x), y_label=spec.value_title_y or DEFAULT_AXIS_TITLES.get(spec.metric_y),

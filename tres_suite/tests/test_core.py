@@ -635,3 +635,43 @@ def test_draw_plot_on_axes_and_new_plot_types(synthetic_group, tmp_path):
         # the file renderer draws the same thing
         files = render_plots(res, str(tmp_path / "p"), [pc])[0].files
         assert any(f.endswith(".png") for f in files) and any(f.endswith("_data.csv") for f in files)
+
+
+def test_single_plot_multi_sample_overlays_and_legend_toggle(synthetic_group):
+    import matplotlib
+    matplotlib.use("Agg")
+    from matplotlib.figure import Figure
+    from tres_suite.plotting import draw_plot
+    from tres_suite.config import PlotConfig, SeriesConfig
+
+    cfg = config_from_dict({"project": {"level_names": ["Composition", "Temperature", "Replicate"],
+                                        "import_folders": [str(synthetic_group)]},
+                            "tdfs": {"recon_tmax_min_ns": 20, "trajectory_stride": 10}})
+    res = run_project(cfg)
+    series = [
+        SeriesConfig(label="DOPC / 15 (n=3)", select={"Composition": "DOPC", "Temperature": "15"},
+                     color="#2f7fc1", marker="", line_style="-", line_width=2.5),
+        SeriesConfig(label="DOPC / 25 (n=3)", select={"Composition": "DOPC", "Temperature": "25"},
+                     color="#cf342b", marker="s", line_style="--", line_width=1.25),
+    ]
+    plots = [
+        PlotConfig(type="steady_state_spectrum", name="overlay_ss"),
+        PlotConfig(type="tdfs_relaxation", name="overlay_relax", coordinate="peak"),
+        PlotConfig(type="tdfs_spectra", name="overlay_tranes", extra={"normalise": "area"}),
+        PlotConfig(type="das_spectra", name="overlay_das", representation="relative_amplitude"),
+        PlotConfig(type="bubble", name="overlay_bubble"),
+    ]
+    for pc in plots:
+        pc.series = series
+        pc.extra.update({"legend_labels_exact": True, "show_legend": False})
+        fig = Figure()
+        ax = fig.add_subplot(111)
+        out = draw_plot(res, pc, ax)
+        assert set(out.data["sample"]) == {s.label for s in series}
+        assert ax.get_legend() is None
+        assert len(ax.lines) + len(ax.collections) > 1
+
+    round_trip = config_from_dict(config_from_dict({"plots": [{"type": "steady_state_spectrum", "name": "styled",
+                                                                 "series": [{"label": "sample", "line_style": "--", "line_width": 2.5}]}]}).to_dict())
+    assert round_trip.plots[0].series[0].line_style == "--"
+    assert round_trip.plots[0].series[0].line_width == pytest.approx(2.5)

@@ -5,22 +5,15 @@ import copy
 from typing import List, Optional
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QColorDialog, QComboBox, QGridLayout, QLabel, QScrollArea, QSizePolicy, QWidget
+from PySide6.QtWidgets import QCheckBox, QDialog, QFrame, QGridLayout, QScrollArea, QWidget
+
+from tres_suite.config import SeriesConfig
 
 from ..model import Node, Session
-from ..theme import ComboBox, SERIES_COLORS, SERIES_MARKERS, Badge, Header, button, hbox, label, panel, section_label, vbox
+from ..theme import PANEL, ComboBox, Header, button, hbox, panel, section_label, vbox
 from ..widgets.plot_canvas import AxesEditor, PlotCanvas
+from .graph_view import OverlaySample, SampleStyleDialog
 from .results_page import CompareSpec, SeriesStyle, build_plot_config, default_style
-
-
-class _Swatch(QLabel):
-    def __init__(self, color: str):
-        super().__init__()
-        self.setFixedSize(14, 14)
-        self.set_color(color)
-
-    def set_color(self, color: str) -> None:
-        self.setStyleSheet(f"background: {color}; border-radius: 3px;")
 
 
 class CompareGraphPage(QWidget):
@@ -38,9 +31,10 @@ class CompareGraphPage(QWidget):
         lay.addWidget(self.header)
         body = QWidget()
         bl = hbox(body, (24, 24, 24, 24), 24)
-        # left card
+        # left controls scroll as one unit so a long series list never compresses the axes panel
         left = panel()
-        left.setFixedWidth(420)
+        left.setMinimumWidth(420)
+        left.setMinimumHeight(720)
         ll = vbox(left, (20, 20, 20, 20), 14)
         ll.addWidget(button("← Back to setup", "link", self.back_requested.emit), 0, Qt.AlignLeft)
         ll.addWidget(section_label("Series"))
@@ -49,16 +43,26 @@ class CompareGraphPage(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(self.series_box)
-        scroll.setMaximumHeight(260)
+        scroll.setMaximumHeight(230)
         scroll.setMinimumHeight(60)
         self.series_scroll = scroll
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("QScrollArea { background: transparent; } QScrollArea > QWidget > QWidget { background: transparent; }")
+        scroll.setStyleSheet(f"QScrollArea {{ background: {PANEL}; }} QScrollArea > QWidget > QWidget {{ background: {PANEL}; }}")
         ll.addWidget(scroll)
         self.add_combo = ComboBox()
         self.add_combo.setStyleSheet("QComboBox { border: 1px dashed #8e9bb0; }")
         self.add_combo.activated.connect(self._add_series)
         ll.addWidget(self.add_combo)
+        opts = QWidget()
+        oh = hbox(opts, spacing=14)
+        self.legend_check = QCheckBox("Show legend")
+        self.connect_check = QCheckBox("Connect points")
+        self.error_check = QCheckBox("Error bars (SD)")
+        for check in (self.legend_check, self.connect_check, self.error_check):
+            check.toggled.connect(self._plot_options_changed)
+            oh.addWidget(check)
+        oh.addStretch(1)
+        ll.addWidget(opts)
         ll.addSpacing(4)
         self.axes = AxesEditor(compact=True)
         self.axes.changed.connect(self._axes_changed)
@@ -71,7 +75,17 @@ class CompareGraphPage(QWidget):
         eg.addWidget(button("Export graph as…", "", self._export_graph), 0, 0)
         eg.addWidget(button("Export data as…", "", self._export_data), 0, 1)
         ll.addWidget(ex)
-        bl.addWidget(left)
+        left_scroll = QScrollArea()
+        left_scroll.setObjectName("comparisonControlsScroll")
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        left_scroll.setFixedWidth(450)
+        left_scroll.setStyleSheet(
+            f"QScrollArea#comparisonControlsScroll {{ background: {PANEL}; }} "
+            f"QScrollArea#comparisonControlsScroll > QWidget > QWidget {{ background: {PANEL}; }}"
+        )
+        left_scroll.setWidget(left)
+        bl.addWidget(left_scroll)
         # right: canvas + footer
         right = QWidget()
         rl = vbox(right, spacing=16)
@@ -92,6 +106,10 @@ class CompareGraphPage(QWidget):
     # ---- public --------------------------------------------------------------------
     def show_spec(self, spec: CompareSpec) -> None:
         self.spec = spec
+        for check, value in ((self.legend_check, spec.show_legend), (self.connect_check, spec.connect_points), (self.error_check, spec.error_bars)):
+            check.blockSignals(True)
+            check.setChecked(value)
+            check.blockSignals(False)
         self.header.set_title(("Anisotropy" if spec.kind == "anisotropy" else "TRES") + " Results · Comparison")
         self._rebuild_series()
         self._draw(reset_axes=True)
@@ -120,61 +138,34 @@ class CompareGraphPage(QWidget):
         self.add_combo.setVisible(self.add_combo.count() > 1)
 
     def _series_row(self, st: SeriesStyle) -> QWidget:
-        w = QWidget()
-        g = QGridLayout(w)
-        g.setContentsMargins(0, 0, 0, 0)
-        g.setHorizontalSpacing(8)
-        g.setColumnStretch(0, 1)
-        badge = Badge(st.node.name, level=st.node.level, size=14)
-        badge.setToolTip(" › ".join(st.node.labels))
-        badge.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
-        badge.setMinimumWidth(40)
-        g.addWidget(badge, 0, 0)
-        cw = QWidget()
-        ch = hbox(cw, spacing=6)
-        sw = _Swatch(st.color)
-        ch.addWidget(sw)
-        cc = ComboBox()
-        cc.setFixedWidth(104)
-        for name, hexv in SERIES_COLORS:
-            cc.addItem(name, hexv)
-        cc.addItem("Custom…", "custom")
-        idx = cc.findData(st.color)
-        if idx < 0:
-            cc.insertItem(cc.count() - 1, st.color, st.color)
-            idx = cc.findData(st.color)
-        cc.setCurrentIndex(idx)
-        cc.activated.connect(lambda i, s=st, combo=cc, swatch=sw: self._color_changed(s, combo, swatch))
-        ch.addWidget(cc)
-        g.addWidget(cw, 0, 1)
-        mc = ComboBox()
-        mc.setFixedWidth(124)
-        for name, m in SERIES_MARKERS:
-            mc.addItem(name, m)
-        mi = mc.findData(st.marker)
-        mc.setCurrentIndex(mi if mi >= 0 else 0)
-        mc.activated.connect(lambda i, s=st, combo=mc: self._marker_changed(s, combo))
-        g.addWidget(mc, 0, 2)
-        x = button("×", "tiny", lambda _=False, s=st: self._remove_series(s))
-        g.addWidget(x, 0, 3)
+        w = QFrame()
+        w.setProperty("subpanel", True)
+        row = hbox(w, (7, 6, 7, 6), 7)
+        swatch = button("", "tiny", lambda _=False, s=st: self._style_series(s))
+        swatch.setFixedSize(22, 22)
+        swatch.setStyleSheet(f"QPushButton {{ background: {st.color}; border-radius: 4px; }}")
+        swatch.setToolTip("Edit series style")
+        row.addWidget(swatch)
+        name = button(st.label or st.node.name, "link", lambda _=False, s=st: self._style_series(s))
+        name.setToolTip("Edit series style · " + " › ".join(st.node.labels))
+        row.addWidget(name, 1)
+        row.addWidget(button("×", "tiny", lambda _=False, s=st: self._remove_series(s)))
         return w
 
-    def _color_changed(self, st: SeriesStyle, combo: QComboBox, swatch: _Swatch) -> None:
-        v = combo.currentData()
-        if v == "custom":
-            c = QColorDialog.getColor(parent=self, title="Series colour")
-            if not c.isValid():
-                combo.setCurrentIndex(max(combo.findData(st.color), 0))
-                return
-            v = c.name()
-            combo.insertItem(combo.count() - 1, v, v)
-            combo.setCurrentIndex(combo.findData(v))
-        st.color = v
-        swatch.set_color(v)
-        self._draw()
-
-    def _marker_changed(self, st: SeriesStyle, combo: QComboBox) -> None:
-        st.marker = combo.currentData()
+    def _style_series(self, st: SeriesStyle) -> None:
+        default_label = " › ".join(st.node.labels) if st.node.level > 1 else st.node.name
+        sample = OverlaySample(st.node, SeriesConfig(label=st.label or default_label, color=st.color, marker=st.marker,
+                                                     line_style=st.line_style, line_width=st.line_width))
+        dlg = SampleStyleDialog(sample, self, "Series style")
+        if dlg.exec() != QDialog.Accepted:
+            return
+        dlg.apply()
+        st.color = sample.series.color
+        st.marker = sample.series.marker
+        st.line_style = sample.series.line_style
+        st.line_width = sample.series.line_width
+        st.label = sample.series.label
+        self._rebuild_series()
         self._draw()
 
     def _remove_series(self, st: SeriesStyle) -> None:
@@ -193,6 +184,14 @@ class CompareGraphPage(QWidget):
         color, marker = default_style(len(self.spec.series))
         self.spec.series.append(SeriesStyle(node, color, marker))
         self._rebuild_series()
+        self._draw()
+
+    def _plot_options_changed(self) -> None:
+        if self.spec is None:
+            return
+        self.spec.show_legend = self.legend_check.isChecked()
+        self.spec.connect_points = self.connect_check.isChecked()
+        self.spec.error_bars = self.error_check.isChecked()
         self._draw()
 
     # ---- drawing --------------------------------------------------------------------

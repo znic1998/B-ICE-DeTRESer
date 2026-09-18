@@ -72,7 +72,7 @@ Tick the plots you want, then drag one deepest-level folder from the tree onto t
 | FWHM | Width of the reconstructed spectrum vs time |
 | τr (relaxation time) | Relaxation function C(t) of the peak shift |
 
-In the viewer you can edit the axis titles, set a range (blank = automatic) and set a fixed plot size in inches; **Data table** shows exactly the numbers that were drawn.
+In the viewer you can add other analysed samples to the active plot, remove them again, and edit each sample's colour, line style, width, marker and legend name. The sample list is kept separately for each plot tab. You can also show or hide the legend and replicate SD band/error bars, edit the axis titles, set a range (blank = automatic), and set a fixed plot size in inches. **Data table** shows exactly the numbers that were drawn, with each sample in its own table placed alongside the others.
 
 ## 6. Comparison (TRES and anisotropy)
 
@@ -82,7 +82,7 @@ Choose what each axis is:
 * **Value** — a metric, one point per group averaged over replicates, with the sample SD as error bars. TRES metrics: GP or custom ratio, ⟨τ⟩, Δν, τr, τ FWHM and the centre-of-mass variants; anisotropy metrics: r∞, ⟨φ⟩, microviscosity. *Linear fit + R²* adds a fit per series.
 * **Value vs Value** (e.g. GP against ⟨τ⟩) plots one point per group with SD on both axes. Drag folders to split the points into series, or drag nothing to plot every group.
 
-Press **Plot →**. On the graph page you can change each series' colour and marker, add or remove series, and edit the axes and plot size. **← Back to setup** keeps your selection.
+Press **Plot →**. On the graph page you can change each series' colour and marker, add or remove series, show or hide the legend and SD error bars, choose whether points are connected, and edit the axes and plot size. **← Back to setup** keeps your selection.
 
 ## 7. Exports
 

@@ -47,6 +47,8 @@ class SeriesConfig:
     select: Dict[str, Any] = field(default_factory=dict)  # level -> value(s); empty = every group
     color: Optional[str] = None  # default palette index or hex
     marker: Optional[str] = None
+    line_style: Optional[str] = None
+    line_width: Optional[float] = None
 
 
 @dataclass

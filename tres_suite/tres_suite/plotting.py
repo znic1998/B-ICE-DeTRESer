@@ -64,8 +64,18 @@ def _style(i: int, s: Optional[SeriesConfig]):
     color = (s.color if s and s.color else DEFAULT_COLORS[i % len(DEFAULT_COLORS)])
     if isinstance(color, int):
         color = DEFAULT_COLORS[color % len(DEFAULT_COLORS)]
-    marker = (s.marker if s and s.marker else DEFAULT_MARKERS[i % len(DEFAULT_MARKERS)])
+    marker = s.marker if s and s.marker is not None else DEFAULT_MARKERS[i % len(DEFAULT_MARKERS)]
     return color, marker
+
+
+def _line_style(s: Optional[SeriesConfig]) -> tuple[str, float]:
+    """Return the optional GUI-selected line style without changing CLI defaults."""
+    return ((s.line_style if s else None) or "-", float(s.line_width) if s and s.line_width is not None else 1.5)
+
+
+def _legend_label(pc: PlotConfig, s: SeriesConfig, g: GroupResult, n: int) -> str:
+    """The graph viewer supplies a complete editable label; older configs keep automatic n."""
+    return s.label if pc.extra.get("legend_labels_exact") else f"{s.label} (n={n})"
 
 
 def select_groups(result: RunResult, select: Optional[Dict[str, Any]], kind: str = "tres") -> List[GroupResult]:
@@ -109,8 +119,12 @@ def apply_axes(ax, pc: PlotConfig, result: RunResult, x_key, y_key) -> None:
     if pc.title:
         ax.set_title(pc.title)
     ax.tick_params(direction="in", which="both")
-    if ax.get_legend() is None and ax.get_legend_handles_labels()[0]:
+    show_legend = bool(pc.extra.get("show_legend", True))
+    legend = ax.get_legend()
+    if show_legend and legend is None and ax.get_legend_handles_labels()[0]:
         ax.legend(frameon=False, fontsize=9)
+    elif not show_legend and legend is not None:
+        legend.remove()
 
 
 def draw_plot(result: RunResult, pc: PlotConfig, ax) -> DrawResult:
@@ -177,9 +191,13 @@ def draw_metric_comparison(result: RunResult, pc: PlotConfig, ax):
         xe, ye = np.array(xe, float)[order], np.array(ye, float)[order]
         n_txt = f"n={min(ns)}" if min(ns) == max(ns) else f"n={min(ns)}-{max(ns)}"
         px, py, pxe, pye = (ys, xs, ye, xe) if transpose else (xs, ys, xe, ye)
+        ls = "-" if (x_is_label and pc.extra.get("connect_points", True)) else "none"
+        line_style, line_width = _line_style(s)
+        if ls != "none":
+            ls = line_style
         ax.errorbar(px, py, yerr=(pye if (pc.error_bars and (transpose or True) and np.any(np.isfinite(pye))) else None),
                     xerr=(pxe if (pc.error_bars and np.any(np.isfinite(pxe))) else None),
-                    fmt=marker, color=color, ecolor=color, capsize=2, elinewidth=0.8, markersize=5, ls="-" if x_is_label else "none", lw=0.8,
+                    fmt=marker, color=color, ecolor=color, capsize=2, elinewidth=0.8, markersize=5, ls=ls, lw=line_width,
                     label=f"{s.label} ({n_txt})")
         if pc.fit:
             f = linear_fit(px, py)
@@ -198,43 +216,47 @@ def draw_metric_comparison(result: RunResult, pc: PlotConfig, ax):
 
 
 def draw_das_spectra(result: RunResult, pc: PlotConfig, ax):
-    groups = select_groups(result, pc.group or (pc.series[0].select if pc.series else {}))
-    if not groups:
+    series = pc.series or [SeriesConfig(label="group", select=pc.group or {})]
+    selected = [(s, g) for s in series for g in select_groups(result, s.select)]
+    if not selected:
         raise ValueError(f"plot {pc.name}: no analysed TRES group matches {pc.group}")
-    g = groups[0]
-    sp = g.das_spectra
-    wl = sp["wavelengths_nm"]
-    n = sp["n_components"]
     rows = []
     npe = pc.representation == "normalized_pre_exponential"
-    for j in range(n):
-        y = sp["npe_mean"][:, j] if npe else sp["emission_mean"][:, j]
-        sd = sp["npe_std"][:, j] if npe else sp["emission_std"][:, j]
-        color, _ = _style(j, None)
-        lab = rf"$\tau_{j + 1}$ = {sp['lifetimes_mean'][j]:.2f} ± {sp['lifetimes_std'][j]:.2f} ns" if np.isfinite(sp['lifetimes_std'][j]) else rf"$\tau_{j + 1}$ = {sp['lifetimes_mean'][j]:.2f} ns"
-        ax.plot(wl, y, color=color, label=lab)
-        if pc.error_bars and np.any(np.isfinite(sd)):
-            ax.fill_between(wl, y - sd, y + sd, color=color, alpha=0.15, lw=0)
-        for w, a, b in zip(wl, y, sd):
-            rows.append({"series": f"tau{j + 1}", "lifetime_ns_mean": sp["lifetimes_mean"][j], "wavelength_nm": w, "y": a, "y_sd": b, "n": sp["n_replicates"]})
+    wl_mins, wl_maxs = [], []
+    for i, (s, g) in enumerate(selected):
+        sp = g.das_spectra
+        wl = sp["wavelengths_nm"]
+        wl_mins.append(float(wl.min())); wl_maxs.append(float(wl.max()))
+        color, _ = _style(i, s)
+        line_style, line_width = _line_style(s)
+        sample = _legend_label(pc, s, g, sp["n_replicates"])
+        for j in range(sp["n_components"]):
+            y = sp["npe_mean"][:, j] if npe else sp["emission_mean"][:, j]
+            sd = sp["npe_std"][:, j] if npe else sp["emission_std"][:, j]
+            tau = sp["lifetimes_mean"][j]
+            ax.plot(wl, y, color=color, ls=line_style, lw=line_width, alpha=max(0.45, 1.0 - j * 0.16), label=f"{sample} — τ{j + 1} ({tau:.2f} ns)")
+            if pc.error_bars and np.any(np.isfinite(sd)):
+                ax.fill_between(wl, y - sd, y + sd, color=color, alpha=0.10, lw=0)
+            for w, a, b in zip(wl, y, sd):
+                rows.append({"sample": sample, "series": f"tau{j + 1}", "group": g.group.name, "lifetime_ns_mean": tau, "wavelength_nm": w, "y": a, "y_sd": b, "n": sp["n_replicates"]})
+        if not npe:
+            ax.plot(wl, sp["total_mean"], color=color, ls=":", lw=line_width, label=f"{sample} — total")
+            if pc.error_bars:
+                ax.fill_between(wl, sp["total_mean"] - sp["total_std"], sp["total_mean"] + sp["total_std"], color=color, alpha=0.08, lw=0)
+            for w, a, b in zip(wl, sp["total_mean"], sp["total_std"]):
+                rows.append({"sample": sample, "series": "total", "group": g.group.name, "wavelength_nm": w, "y": a, "y_sd": b, "n": sp["n_replicates"]})
     if not npe:
-        ax.plot(wl, sp["total_mean"], color="k", label="total")
-        if pc.error_bars:
-            ax.fill_between(wl, sp["total_mean"] - sp["total_std"], sp["total_mean"] + sp["total_std"], color="k", alpha=0.1, lw=0)
-        for w, a, b in zip(wl, sp["total_mean"], sp["total_std"]):
-            rows.append({"series": "total", "wavelength_nm": w, "y": a, "y_sd": b, "n": sp["n_replicates"]})
         ax.set_ylim(bottom=0)
     else:
         ax.axhline(0, color="k", lw=1)
-    ax.set_xlim(wl.min(), wl.max())
-    ax.set_title(pc.title or f"{g.group.name} (n={sp['n_replicates']})")
-    pc.title = ax.get_title()
+    if wl_mins:
+        ax.set_xlim(min(wl_mins), max(wl_maxs))
     ykey = "normalized_pre_exponential" if npe else "das_emission"
     if not pc.y_label:
         pc.y_label = "Normalized amplitude [-]" if npe else "Normalized intensity [-]"
     if not pc.x_label:
         pc.x_label = "Wavelength [nm]"
-    return pd.DataFrame(rows), {"group": g.group.name, "representation": pc.representation}, "wavelength_nm", ykey
+    return pd.DataFrame(rows), {"groups": [g.group.name for _, g in selected], "representation": pc.representation}, "wavelength_nm", ykey
 
 
 def draw_bubble(result: RunResult, pc: PlotConfig, ax):
@@ -252,13 +274,14 @@ def draw_bubble(result: RunResult, pc: PlotConfig, ax):
             ax.scatter(x, y, s=a * scale, facecolors=color, alpha=0.35, edgecolors=color, lw=1.2)
             # legend entry with a fixed-size marker (a scatter handle would draw a bubble at data size, i.e. a fake 4th bubble)
             from matplotlib.lines import Line2D
+            sample = _legend_label(pc, s, g, comps[0]["n"])
             handles.append(Line2D([], [], marker=marker if marker in "osD^v" else "o", ls="", ms=8, mfc=color, mec=color, alpha=0.6,
-                                  label=f"{s.label if len(groups) == 1 else g.group.name} (n={comps[0]['n']})"))
+                                  label=sample))
             if pc.error_bars:
                 ax.errorbar(x, y, xerr=[c["lifetime_ns_std"] for c in comps], yerr=[c["peak_nm_std"] for c in comps], fmt="none", ecolor="k", elinewidth=0.6, capsize=2)
             ax.scatter(x, y, c="k", s=3)
             for c in comps:
-                rows.append({"series": s.label, "group": g.group.name, "component": c["component"], "lifetime_ns": c["lifetime_ns_mean"], "lifetime_ns_sd": c["lifetime_ns_std"],
+                rows.append({"sample": sample, "series": s.label, "group": g.group.name, "component": c["component"], "lifetime_ns": c["lifetime_ns_mean"], "lifetime_ns_sd": c["lifetime_ns_std"],
                              "peak_nm": c["peak_nm_mean"], "peak_nm_sd": c["peak_nm_std"], "area_percent": c["area_percent_mean"], "area_percent_sd": c["area_percent_std"],
                              "marker_size_pt2": c["area_percent_mean"] * scale, "n": c["n"], "region": c["region"]})
     ax.grid(ls="--", alpha=0.3)
@@ -275,45 +298,49 @@ def draw_bubble(result: RunResult, pc: PlotConfig, ax):
 
 
 def draw_tdfs_spectra(result: RunResult, pc: PlotConfig, ax):
-    groups = select_groups(result, pc.group or (pc.series[0].select if pc.series else {}))
-    if not groups:
+    series = pc.series or [SeriesConfig(label="group", select=pc.group or {})]
+    selected = [(s, g) for s in series for g in select_groups(result, s.select)]
+    if not selected:
         raise ValueError(f"plot {pc.name}: no analysed TRES group matches {pc.group}")
-    g = groups[0]
-    reps = [r for r in g.replicates if r.tdfs is not None]
-    if not reps:
-        raise ValueError(f"plot {pc.name}: TDFS not computed for {g.group.name}")
     times = list(pc.times_ns or result.config.tdfs.export_times_ns)
-    wl = reps[0].tdfs.wavelengths_nm
-    order = np.argsort(wl)
     trap = getattr(np, "trapezoid", None) or np.trapz  # type: ignore[attr-defined]
     normalise = pc.extra.get("normalise", "area")  # area | none
-    cmap = plt.get_cmap("viridis")
     rows = []
-    tmax_all = min(r.tdfs.t_ns[-1] for r in reps)
-    times = [t for t in times if t <= tmax_all]
-    for k, t in enumerate(times):
-        specs = []
-        for r in reps:
-            s = r.tdfs.spectrum_at(t)
-            if normalise == "area":
-                a = float(trap(s[order], wl[order]))
-                s = s / a if a != 0 else np.full_like(s, np.nan)
-            specs.append(s)
-        arr = np.array(specs)
-        m = np.nanmean(arr, axis=0)
-        sd = np.nanstd(arr, axis=0, ddof=1) if len(reps) > 1 else np.full_like(m, np.nan)
-        color = cmap(k / max(len(times) - 1, 1))
-        ax.plot(wl, m, color=color, label=f"{t:g} ns")
-        if pc.error_bars and len(reps) > 1:
-            ax.fill_between(wl, m - sd, m + sd, color=color, alpha=0.12, lw=0)
-        for w, a, b in zip(wl, m, sd):
-            rows.append({"series": f"t={t:g} ns", "time_ns": t, "wavelength_nm": w, "y": a, "y_sd": b, "n": len(reps)})
-    ax.set_xlim(wl.min(), wl.max())
-    ax.set_title(pc.title or f"{g.group.name}: reconstructed spectra (n={len(reps)})")
-    pc.title = ax.get_title()
+    wl_mins, wl_maxs = [], []
+    for i, (series_cfg, g) in enumerate(selected):
+        reps = [r for r in g.replicates if r.tdfs is not None]
+        if not reps:
+            continue
+        wl = reps[0].tdfs.wavelengths_nm
+        wl_mins.append(float(wl.min())); wl_maxs.append(float(wl.max()))
+        order = np.argsort(wl)
+        color, marker = _style(i, series_cfg)
+        line_style, line_width = _line_style(series_cfg)
+        sample = _legend_label(pc, series_cfg, g, len(reps))
+        valid_times = [t for t in times if t <= min(r.tdfs.t_ns[-1] for r in reps)]
+        for k, t in enumerate(valid_times):
+            specs = []
+            for rep in reps:
+                spectrum = rep.tdfs.spectrum_at(t)
+                if normalise == "area":
+                    a = float(trap(spectrum[order], wl[order]))
+                    spectrum = spectrum / a if a != 0 else np.full_like(spectrum, np.nan)
+                specs.append(spectrum)
+            arr = np.array(specs)
+            m = np.nanmean(arr, axis=0)
+            sd = np.nanstd(arr, axis=0, ddof=1) if len(reps) > 1 else np.full_like(m, np.nan)
+            alpha = 0.35 + 0.65 * (k + 1) / max(len(valid_times), 1)
+            ax.plot(wl, m, color=color, marker=marker if marker and marker != "None" else None, markevery=max(len(wl) // 8, 1),
+                    ls=line_style, lw=line_width, alpha=alpha, label=f"{sample} — {t:g} ns")
+            if pc.error_bars and len(reps) > 1:
+                ax.fill_between(wl, m - sd, m + sd, color=color, alpha=0.08, lw=0)
+            for w, a, b in zip(wl, m, sd):
+                rows.append({"sample": sample, "series": f"t={t:g} ns", "group": g.group.name, "time_ns": t, "wavelength_nm": w, "y": a, "y_sd": b, "n": len(reps)})
+    if wl_mins:
+        ax.set_xlim(min(wl_mins), max(wl_maxs))
     pc.x_label = pc.x_label or "Wavelength [nm]"
     pc.y_label = pc.y_label or ("Area-normalised intensity [-]" if normalise == "area" else "Reconstructed intensity [-]")
-    return pd.DataFrame(rows), {"group": g.group.name, "normalisation": normalise, "averaging": "replicate reconstructions averaged point-wise at each time"}, "wavelength_nm", "reconstructed_intensity"
+    return pd.DataFrame(rows), {"groups": [g.group.name for _, g in selected], "normalisation": normalise, "averaging": "replicate reconstructions averaged point-wise at each time"}, "wavelength_nm", "reconstructed_intensity"
 
 
 def draw_tdfs_trajectory(result: RunResult, pc: PlotConfig, ax):
@@ -330,15 +357,17 @@ def draw_tdfs_trajectory(result: RunResult, pc: PlotConfig, ax):
             tr = g.tdfs_trajectory
             if tr is None:
                 continue
-            color, _ = _style(i, s)
+            color, marker = _style(i, s)
+            line_style, line_width = _line_style(s)
             i += 1
             t, m, sd, n = tr["t_ns"], tr[f"{key}_mean"], tr[f"{key}_std"], tr["n"]
-            lab = s.label if len(series) > 1 and len(select_groups(result, s.select)) == 1 else g.group.name
-            ax.plot(t, m, color=color, label=f"{lab} (n={int(np.nanmax(n))})")
+            lab = _legend_label(pc, s, g, int(np.nanmax(n)))
+            ax.plot(t, m, color=color, marker=marker if marker and marker != "None" else None, markevery=max(len(t) // 10, 1),
+                    ls=line_style, lw=line_width, label=lab)
             if pc.error_bars:
                 ax.fill_between(t, m - sd, m + sd, color=color, alpha=0.15, lw=0)
             for a, b, c, d in zip(t, m, sd, n):
-                rows.append({"series": lab, "group": g.group.name, "time_ns": a, "y": b, "y_sd": c, "n": d})
+                rows.append({"sample": lab, "series": lab, "group": g.group.name, "time_ns": a, "y": b, "y_sd": c, "n": d})
     if relax:
         ax.axhline(0, color="gray", ls="--", lw=0.8)
     if pc.extra.get("log_x"):
@@ -358,15 +387,17 @@ def draw_steady_state_spectrum(result: RunResult, pc: PlotConfig, ax):
             sp = g.das_spectra
             if sp is None:
                 continue
-            color, _ = _style(i, s)
+            color, marker = _style(i, s)
+            line_style, line_width = _line_style(s)
             i += 1
             wl, m, sd = sp["wavelengths_nm"], sp["fss_norm_mean"], sp["fss_norm_std"]
-            lab = s.label if len(series) > 1 and len(select_groups(result, s.select)) == 1 else g.group.name
-            ax.plot(wl, m, color=color, label=f"{lab} (n={sp['n_replicates']})")
+            lab = _legend_label(pc, s, g, sp["n_replicates"])
+            ax.plot(wl, m, color=color, marker=marker if marker and marker != "None" else None, markevery=max(len(wl) // 10, 1),
+                    ls=line_style, lw=line_width, label=lab)
             if pc.error_bars and np.any(np.isfinite(sd)):
                 ax.fill_between(wl, m - sd, m + sd, color=color, alpha=0.15, lw=0)
             for w, a, b in zip(wl, m, sd):
-                rows.append({"series": lab, "group": g.group.name, "wavelength_nm": w, "y": a, "y_sd": b, "n": sp["n_replicates"]})
+                rows.append({"sample": lab, "series": lab, "group": g.group.name, "wavelength_nm": w, "y": a, "y_sd": b, "n": sp["n_replicates"]})
     ax.set_ylim(bottom=0)
     pc.x_label = pc.x_label or "Wavelength [nm]"
     pc.y_label = pc.y_label or "Normalized intensity [-]"

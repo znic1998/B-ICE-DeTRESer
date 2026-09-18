@@ -14,7 +14,7 @@ Drop a folder of EzTime workbooks organised as `condition / sub-condition / repl
 - Laurdan GP (440/490 nm) or any custom intensity ratio
 - anisotropy: r∞, rotational correlation times, and microviscosity from the wobbling-in-cone model with per-group temperature
 
-Results are plotted interactively (single sample or comparisons across conditions with SD error bars and linear fits), exported as PNG/SVG/PDF + CSV, and the full run — every table, diagnostic and setting — can be exported so it is reproducible. An optional log-normal deconvolution review splits DAS components into sub-peaks.
+Results are plotted interactively (single-sample views with optional multi-sample overlays, or comparisons across conditions with SD error bars and linear fits), exported as PNG/SVG/PDF + CSV, and the full run — every table, diagnostic and setting — can be exported so it is reproducible. An optional log-normal deconvolution review splits DAS components into sub-peaks.
 
 | Options | Graph viewer | Fit review |
 |---|---|---|

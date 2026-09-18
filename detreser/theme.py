@@ -122,6 +122,7 @@ def app_stylesheet() -> str:
     QTreeWidget::item:selected {{ background: transparent; }}
     QTableView {{ border: 1px solid {BORDER}; background: {PANEL}; gridline-color: {BORDER_SOFT}; font-family: "{MONO}", monospace; font-size: 12px; }}
     QHeaderView::section {{ background: {PANEL_ALT}; border: none; border-bottom: 1px solid {BORDER}; border-right: 1px solid {BORDER_SOFT}; padding: 4px 8px; font-weight: 600; font-family: "{SANS}"; font-size: 12px; }}
+    QTableCornerButton::section {{ background: {PANEL_ALT}; border: none; border-bottom: 1px solid {BORDER}; border-right: 1px solid {BORDER_SOFT}; }}
     QScrollArea {{ border: none; background: transparent; }}
     QScrollBar:vertical {{ width: 10px; background: transparent; }}
     QScrollBar::handle:vertical {{ background: {BORDER_INPUT}; border-radius: 5px; min-height: 30px; }}

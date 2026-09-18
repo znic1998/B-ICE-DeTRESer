@@ -9,10 +9,10 @@ import matplotlib
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QFileDialog, QFrame, QGridLayout, QLabel, QLineEdit, QMessageBox, QSizePolicy, QTableView, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QFileDialog, QFrame, QGridLayout, QLabel, QLineEdit, QMessageBox, QScrollArea, QSizePolicy, QTableView, QVBoxLayout, QWidget)
 from PySide6.QtCore import QAbstractTableModel, QModelIndex
 
-from ..theme import MONO, button, hbox, label, section_label, vbox
+from ..theme import MONO, PANEL, button, hbox, label, section_label, vbox
 
 def _register_fonts() -> None:
     """Make the bundled IBM Plex fonts available to matplotlib as well (falls back silently)."""
@@ -223,6 +223,8 @@ class AxesEditor(QFrame):
         self._building = True
         self.x_title.setText(x)
         self.y_title.setText(y)
+        self.x_title.setCursorPosition(0)
+        self.y_title.setCursorPosition(0)
         self._building = False
 
     def set_limits(self, xlim, ylim) -> None:
@@ -317,3 +319,61 @@ class DataTable(QTableView):
     def set_df(self, df) -> None:
         self.setModel(DataFrameModel(df))
         self.resizeColumnsToContents()
+
+
+class SampleTables(QScrollArea):
+    """Horizontal, side-by-side tables for every sample in an overlay plot."""
+
+    def __init__(self):
+        super().__init__()
+        self.setObjectName("sampleTablesScroll")
+        self.setStyleSheet(
+            f"QScrollArea#sampleTablesScroll {{ background: {PANEL}; }} "
+            f"QScrollArea#sampleTablesScroll > QWidget > QWidget {{ background: {PANEL}; }}"
+        )
+        self.setWidgetResizable(True)
+        self.setFrameShape(QFrame.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.host = QWidget()
+        self.host.setObjectName("sampleTablesHost")
+        self.host.setStyleSheet(f"QWidget#sampleTablesHost {{ background: {PANEL}; }}")
+        self.rows = hbox(self.host, spacing=14)
+        self.rows.addStretch(1)
+        self.setWidget(self.host)
+
+    def set_df(self, df) -> None:
+        while self.rows.count():
+            item = self.rows.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        if df is None:
+            self.rows.addStretch(1)
+            return
+        if "sample" in df.columns:
+            groups = []
+            for name, part in df.groupby("sample", sort=False):
+                part = part.drop(columns=["sample"]).reset_index(drop=True)
+                # The card title already identifies the sample. Keep these columns only
+                # when they distinguish multiple curves/components inside that sample.
+                for column in ("series", "group"):
+                    if column in part.columns and part[column].nunique(dropna=False) <= 1:
+                        part = part.drop(columns=[column])
+                groups.append((str(name), part))
+        else:
+            groups = [("Plotted data", df.reset_index(drop=True))]
+        for title, part in groups:
+            card = QFrame()
+            card.setProperty("subpanel", True)
+            card.setMinimumWidth(420)
+            card.setMaximumWidth(560)
+            lay = vbox(card, (12, 10, 12, 12), 8)
+            heading = label(title, bold=True)
+            heading.setWordWrap(True)
+            lay.addWidget(heading)
+            table = DataTable()
+            table.horizontalHeader().setStretchLastSection(False)
+            table.set_df(part)
+            lay.addWidget(table, 1)
+            self.rows.addWidget(card)
+        self.rows.addStretch(1)
