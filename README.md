@@ -48,7 +48,7 @@ Open an issue with the group that failed, what you clicked, and `detreser.log` (
 
 ## Citing
 
-If DeTRESer contributes to a publication, please cite this repository (a Zenodo DOI will be added with the first tagged release).
+If DeTRESer contributes to a publication, please cite this repository [![DOI](https://zenodo.org/badge/1374420541.svg)](https://doi.org/10.5281/zenodo.22826375)
 
 ## Contributions
 
