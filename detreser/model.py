@@ -151,7 +151,8 @@ def default_advanced() -> Dict[str, Any]:
     td, da, wo, va, tg, ou = TdfsSettings(), DasSettings(), WobbleSettings(), ValidationThresholds(), TimeGatedSettings(), OutputConfig()
     return {
         "tdfs": {"recon_dt_ns": td.recon_dt_ns, "metric_tmin_ns": td.metric_tmin_ns, "tail_points": td.tail_points, "intensity_floor": td.intensity_floor,
-                 "fwhm_smooth_window_ns": td.fwhm_smooth_window_ns, "clip_negative_c": td.clip_negative_c, "compute_com": td.compute_com},
+                 "fwhm_smooth_window_ns": td.fwhm_smooth_window_ns, "clip_negative_c": td.clip_negative_c, "compute_com": td.compute_com,
+                 "export_times_ns": list(td.export_times_ns)},
         "das": {"amplitude_source": da.amplitude_source, "bubble_method": da.bubble_method, "gp_blue_nm": da.gp_blue_nm, "gp_red_nm": da.gp_red_nm},
         "wobble": {"phi_selection": wo.phi_selection, "r0_literature": wo.r0_literature},
         "validation": {"chi_sq_warning_threshold": 1.5, "chi_sq_is_reduced": True, "replicate_variation_warning_percent": 20.0,

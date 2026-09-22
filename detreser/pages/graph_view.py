@@ -22,6 +22,9 @@ from .results_page import default_style
 
 LINE_STYLES = [("Solid", "-"), ("Dashed", "--"), ("Dotted", ":"), ("Dash-dot", "-.")]
 MARKERS = [("None", ""), ("Circle", "o"), ("Square", "s"), ("Triangle", "^"), ("Diamond", "D")]
+MULTI_CURVE_PLOT_TYPES = {"tdfs_spectra", "das_spectra"}
+MULTI_CURVE_SAMPLE_LIMIT = 3
+OVERLAY_LINE_STYLES = ["-", "--", "-."]
 
 
 @dataclass
@@ -33,9 +36,10 @@ class OverlaySample:
 class SamplePickerDialog(QDialog):
     """Choose additional analysed condition groups for the active plot."""
 
-    def __init__(self, session: Session, already: set[str], parent=None):
+    def __init__(self, session: Session, already: set[str], parent=None, max_new: int | None = None):
         super().__init__(parent)
         self.session = session
+        self.max_new = max_new
         self.setWindowTitle("Add samples")
         self.resize(620, 520)
         lay = vbox(self, (20, 18, 20, 18), 12)
@@ -65,22 +69,41 @@ class SamplePickerDialog(QDialog):
                     item.setDisabled(True)
                 self.tree.addTopLevelItem(item)
         lay.addWidget(self.tree, 1)
-        note = QLabel("Only analysed samples from this run are available. They are added to the currently selected plot type.")
-        note.setWordWrap(True)
-        note.setProperty("muted13", True)
-        lay.addWidget(note)
+        note_text = "Only analysed samples from this run are available. They are added to the currently selected plot type."
+        if max_new is not None:
+            note_text += f" You can add up to {max_new} more for this multi-curve plot."
+        self.note = QLabel(note_text)
+        self.note.setWordWrap(True)
+        self.note.setProperty("muted13", True)
+        lay.addWidget(self.note)
         box = QDialogButtonBox(QDialogButtonBox.Cancel | QDialogButtonBox.Ok)
-        box.button(QDialogButtonBox.Ok).setText("Add selected")
+        self.ok_button = box.button(QDialogButtonBox.Ok)
+        self.ok_button.setText("Add selected")
         box.accepted.connect(self.accept)
         box.rejected.connect(self.reject)
         lay.addWidget(box)
         self.search.textChanged.connect(self._filter)
+        self.tree.itemChanged.connect(self._selection_changed)
+        self._selection_changed()
 
     def _filter(self, text: str) -> None:
         text = text.strip().lower()
         for i in range(self.tree.topLevelItemCount()):
             item = self.tree.topLevelItem(i)
             item.setHidden(bool(text) and text not in (item.text(0) + " " + item.text(1)).lower())
+
+    def _selection_changed(self, *_args) -> None:
+        count = sum(self.tree.topLevelItem(i).checkState(0) == Qt.Checked
+                    for i in range(self.tree.topLevelItemCount()))
+        within_limit = self.max_new is None or count <= self.max_new
+        self.ok_button.setEnabled(count > 0 and within_limit)
+        if self.max_new is not None:
+            if not within_limit:
+                self.note.setText(f"Choose no more than {self.max_new} additional sample(s) for this multi-curve plot.")
+                self.note.setStyleSheet("color: #b42318;")
+            else:
+                self.note.setText(f"This multi-curve plot supports three samples total; you can add up to {self.max_new} more.")
+                self.note.setStyleSheet("")
 
     def selected_nodes(self) -> List[Node]:
         out = []
@@ -230,7 +253,8 @@ class GraphViewPage(QWidget):
         self.samples_box = QWidget()
         self.samples_lay = vbox(self.samples_box, spacing=7)
         spl.addWidget(self.samples_box)
-        spl.addWidget(button("+ Add sample…", "outline", self._add_samples))
+        self.add_sample_button = button("+ Add sample…", "outline", self._add_samples)
+        spl.addWidget(self.add_sample_button)
         self.legend_check = QCheckBox("Show legend")
         self.legend_check.setChecked(True)
         self.legend_check.toggled.connect(self._options_changed)
@@ -269,7 +293,12 @@ class GraphViewPage(QWidget):
         n = group.n_replicates if group is not None else 0
         legend = f"{' / '.join(node.labels[-2:])} (n={n})"
         return OverlaySample(node, SeriesConfig(label=legend, select=self.session.select_for_node(node), color=color,
-                                                marker="", line_style="-", line_width=1.8))
+                                                marker="", line_style=OVERLAY_LINE_STYLES[index % len(OVERLAY_LINE_STYLES)], line_width=1.8))
+
+    def _sample_limit(self) -> int | None:
+        if self.plots and self.plots[self.current].type in MULTI_CURVE_PLOT_TYPES:
+            return MULTI_CURVE_SAMPLE_LIMIT
+        return None
 
     def show_plots(self, node: Node, plots: List) -> None:
         self.node = node
@@ -359,13 +388,26 @@ class GraphViewPage(QWidget):
             remove.setEnabled(len(samples) > 1)
             rl.addWidget(remove)
             self.samples_lay.addWidget(row)
+        limit = self._sample_limit()
+        at_limit = limit is not None and len(samples) >= limit
+        self.add_sample_button.setEnabled(not at_limit)
+        self.add_sample_button.setText(f"{limit} sample limit reached" if at_limit else "+ Add sample…")
+        self.add_sample_button.setToolTip(
+            f"These multi-curve plots are limited to {limit} samples." if at_limit else "Add another analysed sample"
+        )
 
     def _add_samples(self) -> None:
         current = self.samples_by_plot[self.current]
-        dlg = SamplePickerDialog(self.session, {s.node.path for s in current}, self)
+        limit = self._sample_limit()
+        if limit is not None and len(current) >= limit:
+            return
+        max_new = None if limit is None else limit - len(current)
+        dlg = SamplePickerDialog(self.session, {s.node.path for s in current}, self, max_new=max_new)
         if dlg.exec() != QDialog.Accepted:
             return
         selected = dlg.selected_nodes()
+        if max_new is not None:
+            selected = selected[:max_new]
         for node in selected:
             current.append(self._default_sample(node, len(current)))
         if selected:

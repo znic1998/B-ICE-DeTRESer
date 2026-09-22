@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import copy
+import math
 import os
+import re
 from typing import Any, Dict, List, Optional
 
 from PySide6.QtCore import QRectF, Qt, QTimer, Signal
@@ -232,6 +234,44 @@ def _int(e: QLineEdit, default):
     return default if v is None else int(v)
 
 
+def _parse_curve_times(text: str) -> List[float]:
+    """Parse explicit times or ``start:step:end`` for Full TRES/TRANES curves."""
+    text = text.strip()
+    if not text:
+        raise ValueError("Enter at least one Full TRES / TRANES curve time.")
+    try:
+        if ":" in text:
+            parts = [float(p.strip()) for p in text.split(":")]
+            if len(parts) != 3:
+                raise ValueError
+            start, step, end = parts
+            if not all(math.isfinite(v) for v in parts) or start < 0 or step <= 0 or end < start:
+                raise ValueError
+            intervals = (end - start) / step
+            if not math.isfinite(intervals) or intervals > 199:
+                raise ValueError("Enter between 1 and 200 Full TRES / TRANES curve times.")
+            count = int(math.floor(intervals + 1e-10)) + 1
+            values = [start + i * step for i in range(count)]
+        else:
+            values = [float(p) for p in re.split(r"[\s,;]+", text) if p]
+    except ValueError as exc:
+        raise ValueError(
+            "Curve times must be increasing non-negative numbers separated by commas, "
+            "or a range written as start:interval:end."
+        ) from exc
+    if not values or len(values) > 200:
+        raise ValueError("Enter between 1 and 200 Full TRES / TRANES curve times.")
+    if any(not math.isfinite(v) or v < 0 for v in values):
+        raise ValueError("Full TRES / TRANES curve times must be finite and non-negative.")
+    if any(b <= a for a, b in zip(values, values[1:])):
+        raise ValueError("Full TRES / TRANES curve times must be strictly increasing with no duplicates.")
+    return values
+
+
+def _format_curve_times(values) -> str:
+    return ", ".join(f"{float(v):g}" for v in values)
+
+
 class AdvancedDialog(QDialog):
     """Four tabs mapped to the backend config sections.  ``session.advanced`` is updated on Save."""
 
@@ -289,6 +329,15 @@ class AdvancedDialog(QDialog):
         self.a_tail = _num(5); l1.addWidget(_field("Tail points", self.a_tail))
         self.a_floor = _num(0.01); l1.addWidget(_field("Intensity floor", self.a_floor))
         self.a_fwhm = _num(0.25); l1.addWidget(_field("FWHM smoothing (ns)", self.a_fwhm))
+        l1.addWidget(QLabel("Full TRES / TRANES curve times (ns)"))
+        self.a_curve_times = QLineEdit()
+        self.a_curve_times.setProperty("mono", True)
+        self.a_curve_times.setPlaceholderText("0.05, 0.1, 0.25, 0.5 …")
+        self.a_curve_times.setToolTip("List exact times, or use start:interval:end (for example 0.1:0.5:10).")
+        l1.addWidget(self.a_curve_times)
+        curve_note = QLabel("Comma-separated times, or start:interval:end")
+        curve_note.setProperty("muted13", True)
+        l1.addWidget(curve_note)
         self.a_clip = QCheckBox("Clip negative C"); l1.addWidget(self.a_clip)
         self.a_com = QCheckBox("Also compute center of mass"); l1.addWidget(self.a_com)
         l1.addStretch(1)
@@ -405,8 +454,8 @@ class AdvancedDialog(QDialog):
         w.setParent(None); w.deleteLater()
 
     def _fit_review(self) -> None:
-        self._save(close=True)
-        self.open_fit_review.emit()
+        if self._save(close=True):
+            self.open_fit_review.emit()
 
     # ---- load / save --------------------------------------------------------------
     def _load(self, v: Dict[str, Any], only_tab: Optional[int] = None) -> None:
@@ -414,6 +463,7 @@ class AdvancedDialog(QDialog):
             t = v["tdfs"]; d = v["das"]; w = v["wobble"]
             self.a_dt.setText(f"{t['recon_dt_ns']:g}"); self.a_tmin.setText(f"{t['metric_tmin_ns']:g}"); self.a_tail.setText(str(int(t['tail_points'])))
             self.a_floor.setText(f"{t['intensity_floor']:g}"); self.a_fwhm.setText(f"{t['fwhm_smooth_window_ns']:g}")
+            self.a_curve_times.setText(_format_curve_times(t.get("export_times_ns", default_advanced()["tdfs"]["export_times_ns"])))
             self.a_clip.setChecked(bool(t["clip_negative_c"])); self.a_com.setChecked(bool(t["compute_com"]))
             self.a_amp.setCurrentIndex(0 if d["amplitude_source"] == "results" else 1)
             self.a_bubble.setCurrentIndex(0 if d["bubble_method"] == "quadratic_peak" else 1)
@@ -451,9 +501,10 @@ class AdvancedDialog(QDialog):
 
     def _collect(self) -> Dict[str, Any]:
         v = copy.deepcopy(self.values)
+        curve_times = _parse_curve_times(self.a_curve_times.text())
         v["tdfs"].update({"recon_dt_ns": _float(self.a_dt, 0.01) or 0.01, "metric_tmin_ns": _float(self.a_tmin, 0.1) or 0.1, "tail_points": _int(self.a_tail, 5),
                           "intensity_floor": _float(self.a_floor, 0.01) or 0.01, "fwhm_smooth_window_ns": _float(self.a_fwhm, 0.25) or 0.25,
-                          "clip_negative_c": self.a_clip.isChecked(), "compute_com": self.a_com.isChecked()})
+                          "clip_negative_c": self.a_clip.isChecked(), "compute_com": self.a_com.isChecked(), "export_times_ns": curve_times})
         phi = ["mean", "longest", "shortest"][self.a_phi.currentIndex()] if self.a_phi.currentIndex() < 3 else f"component:{_int(self.a_phi_k, 1)}"
         v["das"].update({"amplitude_source": "results" if self.a_amp.currentIndex() == 0 else "summary",
                          "bubble_method": "quadratic_peak" if self.a_bubble.currentIndex() == 0 else "lognormal_fit",
@@ -481,14 +532,27 @@ class AdvancedDialog(QDialog):
     def _reset_tab(self) -> None:
         d = default_advanced()
         tab = self.tabs.current()
-        cur = self._collect()
+        try:
+            cur = self._collect()
+        except ValueError as exc:
+            if tab != 0:
+                QMessageBox.warning(self, "Invalid curve times", str(exc))
+                return
+            self.a_curve_times.setText(_format_curve_times(d["tdfs"]["export_times_ns"]))
+            cur = self._collect()
         keys = {0: ["tdfs", "das", "wobble"], 1: ["validation"], 2: ["output"], 3: ["time_gated", "project"]}[tab]
         for k in keys:
             cur[k] = d[k]
         self.values = cur
         self._load(cur, only_tab=tab)
 
-    def _save(self, close: bool = True) -> None:
-        self.session.advanced = self._collect()
+    def _save(self, close: bool = True) -> bool:
+        try:
+            values = self._collect()
+        except ValueError as exc:
+            QMessageBox.warning(self, "Invalid curve times", str(exc))
+            return False
+        self.session.advanced = values
         if close:
             self.accept()
+        return True

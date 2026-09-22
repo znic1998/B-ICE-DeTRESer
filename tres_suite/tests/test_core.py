@@ -670,6 +670,13 @@ def test_single_plot_multi_sample_overlays_and_legend_toggle(synthetic_group):
         assert set(out.data["sample"]) == {s.label for s in series}
         assert ax.get_legend() is None
         assert len(ax.lines) + len(ax.collections) > 1
+        if pc.type in {"tdfs_spectra", "das_spectra"}:
+            sample_lines = [[line for line in ax.lines if line.get_label().startswith(s.label + " —")] for s in series]
+            assert all(len(lines) > 1 for lines in sample_lines)
+            assert len({line.get_color() for line in sample_lines[0]}) > 1
+            assert [line.get_color() for line in sample_lines[0]] == [line.get_color() for line in sample_lines[1]]
+            assert {line.get_linestyle() for line in sample_lines[0]} == {"-"}
+            assert {line.get_linestyle() for line in sample_lines[1]} == {"--"}
 
     round_trip = config_from_dict(config_from_dict({"plots": [{"type": "steady_state_spectrum", "name": "styled",
                                                                  "series": [{"label": "sample", "line_style": "--", "line_width": 2.5}]}]}).to_dict())

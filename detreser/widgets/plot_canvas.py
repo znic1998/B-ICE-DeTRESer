@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import math
 import os
 from typing import Callable, Optional
 
@@ -269,13 +270,21 @@ def _fmt(v) -> str:
 
 
 def _limits(a: str, b: str):
+    a, b = a.strip(), b.strip()
+    if not a and not b:
+        return None
     try:
-        lo, hi = float(a.strip()), float(b.strip())
+        lo = float(a) if a else None
+        hi = float(b) if b else None
     except ValueError:
         return None
-    if lo == hi:
+    if (lo is not None and not math.isfinite(lo)) or (hi is not None and not math.isfinite(hi)):
         return None
-    return [min(lo, hi), max(lo, hi)]
+    if lo is not None and hi is not None:
+        if lo == hi:
+            return None
+        lo, hi = min(lo, hi), max(lo, hi)
+    return [lo, hi]
 
 
 class DataFrameModel(QAbstractTableModel):

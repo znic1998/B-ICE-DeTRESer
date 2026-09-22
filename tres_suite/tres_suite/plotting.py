@@ -29,6 +29,17 @@ from .stats import linear_fit  # noqa: E402
 DEFAULT_COLORS = ["#1f77b4", "#d62728", "#2ca02c", "#9467bd", "#ff7f0e", "#17becf", "#8c564b", "#000000"]
 DEFAULT_MARKERS = ["o", "s", "^", "D", "v", "P", "X", "*"]
 
+# Multi-curve spectra need the curve identity (time or lifetime component) to
+# remain obvious.  In particular, fading every curve through one sample colour
+# makes TRANES and DAS unreadable.  Keep neighbouring curves far apart in hue;
+# overlaid samples are distinguished by line style instead.
+MULTI_CURVE_COLORS = [
+    "#0072B2", "#D55E00", "#009E73", "#CC79A7",
+    "#E69F00", "#6F42C1", "#17BECF", "#8C564B",
+    "#000000", "#EF553B", "#00A6A6", "#B82E8A",
+    "#7A9A01", "#3B5BDB", "#F28E2B", "#2E8540",
+]
+
 AXIS_LABELS = {
     "gp": "Generalized polarization [-]", "tmean_ns": r"$\langle\tau\rangle$ [ns]",
     "peak_delta_nu_cm-1": r"$\Delta\nu_{peak}$ [cm$^{-1}$]", "peak_tau_r_ns": r"$\tau_{r,peak}$ [ns]",
@@ -71,6 +82,11 @@ def _style(i: int, s: Optional[SeriesConfig]):
 def _line_style(s: Optional[SeriesConfig]) -> tuple[str, float]:
     """Return the optional GUI-selected line style without changing CLI defaults."""
     return ((s.line_style if s else None) or "-", float(s.line_width) if s and s.line_width is not None else 1.5)
+
+
+def _multi_curve_color(i: int) -> str:
+    """Stable vivid colour for a time point/component in a multi-curve plot."""
+    return MULTI_CURVE_COLORS[i % len(MULTI_CURVE_COLORS)]
 
 
 def _legend_label(pc: PlotConfig, s: SeriesConfig, g: GroupResult, n: int) -> str:
@@ -227,22 +243,23 @@ def draw_das_spectra(result: RunResult, pc: PlotConfig, ax):
         sp = g.das_spectra
         wl = sp["wavelengths_nm"]
         wl_mins.append(float(wl.min())); wl_maxs.append(float(wl.max()))
-        color, _ = _style(i, s)
         line_style, line_width = _line_style(s)
         sample = _legend_label(pc, s, g, sp["n_replicates"])
         for j in range(sp["n_components"]):
+            color = _multi_curve_color(j)
             y = sp["npe_mean"][:, j] if npe else sp["emission_mean"][:, j]
             sd = sp["npe_std"][:, j] if npe else sp["emission_std"][:, j]
             tau = sp["lifetimes_mean"][j]
-            ax.plot(wl, y, color=color, ls=line_style, lw=line_width, alpha=max(0.45, 1.0 - j * 0.16), label=f"{sample} — τ{j + 1} ({tau:.2f} ns)")
+            ax.plot(wl, y, color=color, ls=line_style, lw=line_width, label=f"{sample} — τ{j + 1} ({tau:.2f} ns)")
             if pc.error_bars and np.any(np.isfinite(sd)):
                 ax.fill_between(wl, y - sd, y + sd, color=color, alpha=0.10, lw=0)
             for w, a, b in zip(wl, y, sd):
                 rows.append({"sample": sample, "series": f"tau{j + 1}", "group": g.group.name, "lifetime_ns_mean": tau, "wavelength_nm": w, "y": a, "y_sd": b, "n": sp["n_replicates"]})
         if not npe:
-            ax.plot(wl, sp["total_mean"], color=color, ls=":", lw=line_width, label=f"{sample} — total")
+            total_color = _multi_curve_color(sp["n_components"])
+            ax.plot(wl, sp["total_mean"], color=total_color, ls=line_style, lw=line_width, label=f"{sample} — total")
             if pc.error_bars:
-                ax.fill_between(wl, sp["total_mean"] - sp["total_std"], sp["total_mean"] + sp["total_std"], color=color, alpha=0.08, lw=0)
+                ax.fill_between(wl, sp["total_mean"] - sp["total_std"], sp["total_mean"] + sp["total_std"], color=total_color, alpha=0.08, lw=0)
             for w, a, b in zip(wl, sp["total_mean"], sp["total_std"]):
                 rows.append({"sample": sample, "series": "total", "group": g.group.name, "wavelength_nm": w, "y": a, "y_sd": b, "n": sp["n_replicates"]})
     if not npe:
@@ -314,11 +331,12 @@ def draw_tdfs_spectra(result: RunResult, pc: PlotConfig, ax):
         wl = reps[0].tdfs.wavelengths_nm
         wl_mins.append(float(wl.min())); wl_maxs.append(float(wl.max()))
         order = np.argsort(wl)
-        color, marker = _style(i, series_cfg)
+        _, marker = _style(i, series_cfg)
         line_style, line_width = _line_style(series_cfg)
         sample = _legend_label(pc, series_cfg, g, len(reps))
         valid_times = [t for t in times if t <= min(r.tdfs.t_ns[-1] for r in reps)]
         for k, t in enumerate(valid_times):
+            color = _multi_curve_color(k)
             specs = []
             for rep in reps:
                 spectrum = rep.tdfs.spectrum_at(t)
@@ -329,9 +347,8 @@ def draw_tdfs_spectra(result: RunResult, pc: PlotConfig, ax):
             arr = np.array(specs)
             m = np.nanmean(arr, axis=0)
             sd = np.nanstd(arr, axis=0, ddof=1) if len(reps) > 1 else np.full_like(m, np.nan)
-            alpha = 0.35 + 0.65 * (k + 1) / max(len(valid_times), 1)
             ax.plot(wl, m, color=color, marker=marker if marker and marker != "None" else None, markevery=max(len(wl) // 8, 1),
-                    ls=line_style, lw=line_width, alpha=alpha, label=f"{sample} — {t:g} ns")
+                    ls=line_style, lw=line_width, label=f"{sample} — {t:g} ns")
             if pc.error_bars and len(reps) > 1:
                 ax.fill_between(wl, m - sd, m + sd, color=color, alpha=0.08, lw=0)
             for w, a, b in zip(wl, m, sd):
