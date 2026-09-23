@@ -270,6 +270,12 @@ def test_reconstruction_integrates_to_fss_and_nu0_modes(tmp_path):
     assert td.peak.delta_nu_cm1 > 0 and td.peak.tau_r_ns > 0
     td2 = compute_tdfs(WL, das.lifetimes_ns, das.normalized_pre_exponential, das.fss_area_norm, TdfsSettings(nu0_cm1=23800.0), das.mean_lifetime_ns)
     assert td2.peak.nu0_cm1 == 23800.0 and td2.peak.nu0_source == "user_supplied"
+    # tau_r with a user nu0 starts at t=0, C(0)=1: exactly the legacy integral plus the 0 -> metric_tmin trapezoid
+    legacy = compute_tdfs(WL, das.lifetimes_ns, das.normalized_pre_exponential, das.fss_area_norm,
+                          TdfsSettings(nu0_cm1=23800.0, tau_r_from_zero_with_user_nu0=False), das.mean_lifetime_ns)
+    k = int(np.searchsorted(legacy.traj_t_ns, legacy.peak.window_tmin_ns))
+    head = 0.5 * legacy.peak.window_tmin_ns * (1.0 + legacy.traj_c_peak[k])
+    assert td2.peak.tau_r_ns == pytest.approx(legacy.peak.tau_r_ns + head, rel=1e-12)
     assert td2.peak.delta_nu_cm1 == pytest.approx(23800.0 - td2.peak.nuinf_cm1)
     assert td2.com.nu0_source.startswith("apparent")  # COM never inherits the user peak value
     rec = td.scalar_record()

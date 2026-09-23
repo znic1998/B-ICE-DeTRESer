@@ -27,7 +27,8 @@ spectral area is ≥ ``intensity_floor`` × its t=0 value::
            ("apparent" mode; recorded with its time)
     Δν   = ν_0 − ν_∞
     C(t) = (ν(t) − ν_∞) / Δν        (clipped at 0 when ``clip_negative_c``)
-    τ_r  = ∫ C(t) dt  over the metric window (trapezoid)
+    τ_r  = ∫ C(t) dt  over the metric window (trapezoid); with a user-supplied ν_0
+           the integral starts at t = 0 with C(0) = 1 (``tau_r_from_zero_with_user_nu0``)
 
 No literature ν₀ is ever substituted silently.  The former heuristic
 physical-validity classification is computed only as *unevaluated legacy
@@ -69,6 +70,9 @@ class TdfsSettings:
     com_window_initial_ns: float = 0.25  # legacy finite-window COM shift
     com_window_final_ns: float = 10.0
     tau_bar_eps: float = 1e-12
+    # With a user-supplied nu0, nu(0) = nu0 by definition, so C(0) = 1 and tau_r integrates from t = 0
+    # (the point (0, 1) is prepended to the metric window).  False reproduces the legacy integral from metric_tmin_ns.
+    tau_r_from_zero_with_user_nu0: bool = True
 
     @property
     def nu0_mode(self) -> str:
@@ -275,7 +279,16 @@ def _metric(coord: str, t: np.ndarray, nu: np.ndarray, settings: TdfsSettings, n
     clipped = float(np.mean(c < 0)) if len(c) else float("nan")
     if settings.clip_negative_c:
         c = np.clip(c, 0.0, None)
-    tau_r = float(_trapz(c, tm))
+    if nu0_user is not None and settings.tau_r_from_zero_with_user_nu0:
+        # user nu0 is the time-zero frequency: start the integral at C(0) = 1, t = 0
+        if tm[0] > 0:
+            tau_r = float(_trapz(np.concatenate(([1.0], c)), np.concatenate(([0.0], tm))))
+        else:  # metric window already starts at t = 0: C(0) = 1 by definition
+            c0 = c.copy()
+            c0[0] = 1.0
+            tau_r = float(_trapz(c0, tm))
+    else:
+        tau_r = float(_trapz(c, tm))
     return TdfsMetric(coord, True, None, nu0, src, t0, nu_first, nuinf, float(delta), tau_r, int(len(tm)), float(tm[0]), float(tm[-1]), tail_n, clipped)
 
 

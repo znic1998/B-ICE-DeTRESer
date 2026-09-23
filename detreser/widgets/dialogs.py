@@ -234,6 +234,27 @@ def _int(e: QLineEdit, default):
     return default if v is None else int(v)
 
 
+def _positive(e: QLineEdit, name: str, default=None, integer: bool = False, allow_zero: bool = False):
+    """A setting that must be a positive number.  Blank -> ``default``; 0, negative or non-numeric input is
+    rejected (0 is treated as "no value", never silently replaced) so the user must enter another number."""
+    t = e.text().strip()
+    if t == "":
+        if default is None:
+            return None
+        return default
+    try:
+        v = float(t)
+    except ValueError:
+        raise ValueError(f"{name}: '{t}' is not a number.") from None
+    if not math.isfinite(v) or v < 0 or (v == 0 and not allow_zero):
+        raise ValueError(f"{name} must be a {'non-negative' if allow_zero else 'positive'} number (got {t}); enter another value or leave it blank for the default.")
+    if integer:
+        if v != int(v):
+            raise ValueError(f"{name} must be a whole number (got {t}).")
+        return int(v)
+    return v
+
+
 def _parse_curve_times(text: str) -> List[float]:
     """Parse explicit times or ``start:step:end`` for Full TRES/TRANES curves."""
     text = text.strip()
@@ -502,21 +523,21 @@ class AdvancedDialog(QDialog):
     def _collect(self) -> Dict[str, Any]:
         v = copy.deepcopy(self.values)
         curve_times = _parse_curve_times(self.a_curve_times.text())
-        v["tdfs"].update({"recon_dt_ns": _float(self.a_dt, 0.01) or 0.01, "metric_tmin_ns": _float(self.a_tmin, 0.1) or 0.1, "tail_points": _int(self.a_tail, 5),
-                          "intensity_floor": _float(self.a_floor, 0.01) or 0.01, "fwhm_smooth_window_ns": _float(self.a_fwhm, 0.25) or 0.25,
+        v["tdfs"].update({"recon_dt_ns": _positive(self.a_dt, "Reconstruction time step", 0.01), "metric_tmin_ns": _positive(self.a_tmin, "TDFS metric start time", 0.1, allow_zero=True), "tail_points": _positive(self.a_tail, "Tail points", 5, integer=True),
+                          "intensity_floor": _positive(self.a_floor, "Intensity floor", 0.01), "fwhm_smooth_window_ns": _positive(self.a_fwhm, "FWHM smoothing window", 0.25),
                           "clip_negative_c": self.a_clip.isChecked(), "compute_com": self.a_com.isChecked(), "export_times_ns": curve_times})
-        phi = ["mean", "longest", "shortest"][self.a_phi.currentIndex()] if self.a_phi.currentIndex() < 3 else f"component:{_int(self.a_phi_k, 1)}"
+        phi = ["mean", "longest", "shortest"][self.a_phi.currentIndex()] if self.a_phi.currentIndex() < 3 else f"component:{_positive(self.a_phi_k, 'Correlation-time component', 1, integer=True)}"
         v["das"].update({"amplitude_source": "results" if self.a_amp.currentIndex() == 0 else "summary",
                          "bubble_method": "quadratic_peak" if self.a_bubble.currentIndex() == 0 else "lognormal_fit",
-                         "gp_blue_nm": _float(self.a_blue, 440.0) or 440.0, "gp_red_nm": _float(self.a_red, 490.0) or 490.0})
-        v["wobble"].update({"phi_selection": phi, "r0_literature": _float(self.a_r0, 0.39) or 0.39})
-        v["validation"].update({"chi_sq_warning_threshold": _float(self.v_chi, None), "chi_sq_is_reduced": self.v_reduced.isChecked(),
-                                "replicate_variation_warning_percent": _float(self.v_var, None),
+                         "gp_blue_nm": _positive(self.a_blue, "GP blue wavelength", 440.0), "gp_red_nm": _positive(self.a_red, "GP red wavelength", 490.0)})
+        v["wobble"].update({"phi_selection": phi, "r0_literature": _positive(self.a_r0, "Literature r0", 0.39)})
+        v["validation"].update({"chi_sq_warning_threshold": _positive(self.v_chi, "Chi-squared warning threshold"), "chi_sq_is_reduced": self.v_reduced.isChecked(),
+                                "replicate_variation_warning_percent": _positive(self.v_var, "Replicate variation threshold"),
                                 "replicate_variation_metrics": [k for k, cb in self.v_metrics.items() if cb.isChecked()],
-                                "anisotropy_correlation_time_tolerance_percent": _float(self.v_phi, None),
-                                "wavelength_tolerance_nm": _float(self.v_wtol, 1e-6) or 1e-6, "min_wavelength_points": _int(self.v_minpts, 3),
+                                "anisotropy_correlation_time_tolerance_percent": _positive(self.v_phi, "Correlation-time tolerance"),
+                                "wavelength_tolerance_nm": _positive(self.v_wtol, "Wavelength tolerance", 1e-6), "min_wavelength_points": _positive(self.v_minpts, "Minimum wavelength points", 3, integer=True),
                                 "allow_nonuniform_grid": self.v_nonuni.isChecked()})
-        v["output"].update({"png": self.o_png.isChecked(), "svg": self.o_svg.isChecked(), "dpi": _int(self.o_dpi, 300),
+        v["output"].update({"png": self.o_png.isChecked(), "svg": self.o_svg.isChecked(), "dpi": _positive(self.o_dpi, "DPI", 300, integer=True),
                             "overwrite_policy": "always" if self.o_always.isChecked() else "ask", "legacy_compatible": self.o_legacy.isChecked(),
                             "write_reconstructed_spectra": self.o_recon.isChecked(), "write_trajectories": self.o_traj.isChecked()})
         gates = []
@@ -526,20 +547,15 @@ class AdvancedDialog(QDialog):
                 gates.append([lo, hi])
         v["time_gated"].update({"enabled": self.e_tg.isChecked(), "gates_ns": gates or [[0.0, 0.5], [0.5, 2.0], [2.0, 7.0]],
                                 "gate_mode": "integral" if self.e_mode.currentIndex() == 0 else "mean"})
-        v["project"]["workers"] = max(1, _int(self.e_workers, 4))
+        v["project"]["workers"] = _positive(self.e_workers, "Workers", 4, integer=True)
         return v
 
     def _reset_tab(self) -> None:
         d = default_advanced()
         tab = self.tabs.current()
-        try:
-            cur = self._collect()
-        except ValueError as exc:
-            if tab != 0:
-                QMessageBox.warning(self, "Invalid curve times", str(exc))
-                return
-            self.a_curve_times.setText(_format_curve_times(d["tdfs"]["export_times_ns"]))
-            cur = self._collect()
+        # load the defaults into this tab only; unsaved edits on the other tabs stay in their fields
+        # (collecting first would refuse to reset a tab that holds the very value being reset)
+        cur = copy.deepcopy(self.values)
         keys = {0: ["tdfs", "das", "wobble"], 1: ["validation"], 2: ["output"], 3: ["time_gated", "project"]}[tab]
         for k in keys:
             cur[k] = d[k]
@@ -550,7 +566,7 @@ class AdvancedDialog(QDialog):
         try:
             values = self._collect()
         except ValueError as exc:
-            QMessageBox.warning(self, "Invalid curve times", str(exc))
+            QMessageBox.warning(self, "Invalid setting", str(exc))
             return False
         self.session.advanced = values
         if close:

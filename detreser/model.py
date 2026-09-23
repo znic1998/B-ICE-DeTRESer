@@ -223,6 +223,14 @@ class Session:
         if self.roots and depths[0] != self.n_levels:
             return (f"{node.name} has {depths[0]} folder level(s) but the loaded data has {self.n_levels}. "
                     "All data folders must have the same structure.")
+        # Folder names are the group labels: a second folder with the same name (e.g. Day1/DOPC and Day2/DOPC)
+        # would silently pool its replicates into the first one's groups.  Give it a distinct label instead.
+        taken = {r.name for r in self.roots}
+        if node.name in taken:
+            base, k = node.name, 2
+            while f"{base} ({k})" in taken:
+                k += 1
+            node.name = f"{base} ({k})"
         self.roots.append(node)
         self.roots.sort(key=lambda n: LabelValue.parse(n.name).sort_key())
         self.invalidate_result()

@@ -65,7 +65,9 @@ def test_legacy_reference_reproduced_with_legacy_settings():
         path = os.path.join(LEGACY, "TEST DATA/DATA", r["composition"], str(r["temperature"]), r["file"])
         wb = load_workbook(path)
         das = compute_das(wb, DasSettings(amplitude_source="summary"))
-        td = compute_tdfs(wb.wavelengths_nm, das.lifetimes_ns, das.normalized_pre_exponential, das.fss_area_norm, TdfsSettings(nu0_cm1=23800.0), das.mean_lifetime_ns)
+        # legacy tau_r integrated from metric_tmin_ns even with a user nu0
+        td = compute_tdfs(wb.wavelengths_nm, das.lifetimes_ns, das.normalized_pre_exponential, das.fss_area_norm,
+                          TdfsSettings(nu0_cm1=23800.0, tau_r_from_zero_with_user_nu0=False), das.mean_lifetime_ns)
         rec = td.scalar_record()
         assert das.metrics["gp"].value == pytest.approx(r["gp"], abs=1e-9)
         assert das.mean_lifetime_ns == pytest.approx(r["tmean_ns"], abs=1e-5)  # legacy used 6-digit Summary lifetimes
